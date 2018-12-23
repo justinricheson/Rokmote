@@ -1,0 +1,249 @@
+<html>
+<head>
+    <title>ROKMOTE</title>
+    <style media="screen" type="text/css">
+        .row {
+          display: flex;
+          flex-wrap: wrap;
+          padding: 0 4px;
+        }
+
+        .column {
+          max-width: 33%;
+        }
+
+        .column img {
+          vertical-align: middle;
+        }
+
+        .bigButton {
+            width: 75;
+        }
+
+        .standardButton {
+            width: 50;
+        }
+
+        .smallButton {
+            width: 25;
+        }
+    </style>
+</head>
+
+<body onload="loadips();">
+    <script language="javascript">
+        var ipkey = "remote.ips";
+        var selectedIp;
+
+        function loadips() {
+            var ips = readips();
+            for (var i = 0; i < ips.length; i++) {
+                addip(ips[i]);
+            }
+        }
+        function clearui() {
+            var ips = document.getElementById("ips");
+            for (var i = ips.options.length - 1 ; i >= 0 ; i--) {
+              ips.remove(i);
+            }
+
+            window.localStorage.removeItem(ipkey);
+
+            document.getElementById("c0").innerHTML = "";
+            document.getElementById("c1").innerHTML = "";
+            document.getElementById("c2").innerHTML = "";
+            selectedIp = null;
+        }
+        function addip(ipName) {
+            var option = document.createElement("option");
+            option.text = ipName;
+            var ips = document.getElementById("ips");
+            ips.add(option);
+        }
+        function writeip(ipName) {
+            var ips = readips();
+            ips.push(ipName)
+            window.localStorage.setItem(ipkey, JSON.stringify(ips));
+        }
+        function readips() {
+            var storedSt = window.localStorage.getItem(ipkey);
+            return storedSt ? JSON.parse(storedSt) : [];
+        }
+        function discover() {
+            clearui();
+            var subnet = document.getElementById("subnet").value;
+            for (var i = 2; i < 254; i++) {
+                var ip = subnet + "." + i;
+                discoverip(ip);
+            }
+        }
+        function discoverip(ip) {
+            var url = "http://" + ip + ":8060/query/apps";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
+                    getDeviceInfo(ip, function(deviceInfo) {
+                        var ipName = ip + " - " + parseDeviceName(deviceInfo);
+
+                        addip(ipName);
+                        writeip(ipName);
+
+                        // Adding doesn't trigger selection changed, so do it manually the first time
+                        if (selectedIp == null || typeof(selectedIp) == "undefined") {
+                            var ips = document.getElementById("ips");
+                            onIpsSelectionChanged(ips);
+                        }
+                    });
+                }
+            }
+            xhr.send();
+        }
+        function getDeviceInfo(ip, callback) {
+            var url = "http://" + ip + ":8060/query/device-info";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
+                    callback(xhr.response);
+                }
+            }
+            xhr.send();
+        }
+        function parseDeviceName(deviceInfo) {
+            var parser = new DOMParser();
+            var xmlDoc = parser.parseFromString(deviceInfo, "text/xml");
+
+            return xmlDoc.getElementsByTagName("user-device-name")[0].childNodes[0].nodeValue;
+        }
+        function getApps(ip, callback) {
+            var url = "http://" + ip + ":8060/query/apps";
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
+                    callback(xhr.response);
+                }
+            }
+            xhr.send();
+        }
+        function parseApps(apps) {
+            var parser = new DOMParser();
+            var xmlDoc = parser.parseFromString(apps, "text/xml");
+
+            var appResults = [];
+            var appNodes = xmlDoc.getElementsByTagName("app");
+            for (var i = 0; i < appNodes.length; i++) {
+                var appResult = {
+                    id: appNodes[i].getAttribute("id"),
+                    name: appNodes[i].childNodes[0].nodeValue
+                };
+                appResults.push(appResult);
+            }
+
+            return appResults;
+        }
+
+        function onIpsSelectionChanged(ips) {
+            var fullString = ips.options[ips.selectedIndex].text;
+            var dashIndex = fullString.indexOf(" - ");
+            selectedIp = fullString.substring(0, dashIndex);
+
+            getApps(selectedIp, function(apps) {
+                document.getElementById("c0").innerHTML = "";
+                document.getElementById("c1").innerHTML = "";
+                document.getElementById("c2").innerHTML = "";
+
+                var apps = parseApps(apps);
+                for (var i = 0; i < apps.length; i++) {
+                    addApp(apps[i], i % 3);
+                }
+            });
+        }
+        function addApp(app, columnIndex) {
+            var img = document.createElement("IMG");
+            img.src = "http://" + selectedIp + ":8060/query/icon/" + app.id;
+            img.width = "65";
+            img.onclick = function () {
+                openApp(app.id);
+            }
+
+            var column = document.getElementById('c' + columnIndex);
+            column.appendChild(img);
+        }
+
+        function sendKeyPress(key){
+            if (!selectedIp) {
+                return;
+            }
+
+            var url = "http://" + selectedIp + ":8060/keypress/" + key;
+            var xml = new XMLHttpRequest();
+            xml.open("POST", url, true);
+            xml.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xml.send();
+        }
+        function search(searchValue) {
+            if (!selectedIp) {
+                return;
+            }
+
+            var url = "http://" + selectedIp + ":8060/search/browse?keyword=" + searchValue;
+            var xml = new XMLHttpRequest();
+            xml.open("POST", url, true);
+            xml.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xml.send();
+        }
+        function openApp(id) {
+            if (!selectedIp) {
+                return;
+            }
+
+            var url = "http://" + selectedIp + ":8060/launch/" + id;
+            var xml = new XMLHttpRequest();
+            xml.open("POST", url, true);
+            xml.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+            xml.send();
+        }
+    </script>
+
+    <div style="position: relative; width: 200px; text-align:center;">
+        <input id="subnet" value="192.168.86" placeholder="subnet" onkeydown = "if (event.keyCode == 13) discover();" />
+        <input type="button" class="standardButton" value="Search" onclick="discover()"><br>
+
+        <select id="ips" onChange="onIpsSelectionChanged(this);"/><br><br>
+
+        <input type="button" class="standardButton" value="Home" onclick="sendKeyPress('home')">
+        <input type="button" class="standardButton" value="Info" onclick="sendKeyPress('info')">
+        <input type="button" class="standardButton" value="Back" onclick="sendKeyPress('back')"><br><br>
+
+        <input type="button" class="standardButton" value="Rev" onclick="sendKeyPress('rev')">
+        <input type="button" class="standardButton" value="Play" onclick="sendKeyPress('play')">
+        <input type="button" class="standardButton" value="Fwd" onclick="sendKeyPress('fwd')"><br><br>
+
+        <input type="button" class="bigButton" value="Vol Down" onclick="sendKeyPress('volumedown')">
+        <input type="button" class="bigButton" value="Vol Up" onclick="sendKeyPress('volumeup')"><br><br>
+
+        <input type="button" class = "smallButton" value="U" onclick="sendKeyPress('up')"><br>
+        <input type="button" class = "smallButton" value="L" onclick="sendKeyPress('left')">
+        <input type="button" class="standardButton" value="Select" onclick="sendKeyPress('select')">
+        <input type="button" class = "smallButton" value="R" onclick="sendKeyPress('right')"><br>
+        <input type="button" class = "smallButton" value="D" onclick="sendKeyPress('down')"><br><br>
+
+        <input id="search" placeholder="search" onkeydown = "if (event.keyCode == 13) search(this.value);" /><br><br>
+
+        <!-- Apps are added dynamically -->
+        <div class="row">
+            <div id="c0" class="column">
+            </div>
+            <div id="c1" class="column">
+            </div>
+            <div id="c2" class="column">
+            </div>
+        </div>
+    </div>
+
+</body></html>
