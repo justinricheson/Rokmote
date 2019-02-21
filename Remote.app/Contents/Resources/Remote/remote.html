@@ -3,17 +3,17 @@
     <title>ROKMOTE</title>
     <style media="screen" type="text/css">
         .row {
-          display: flex;
-          flex-wrap: wrap;
-          padding: 0 4px;
+            display: flex;
+            flex-wrap: wrap;
+            padding: 0 4px;
         }
 
         .column {
-          max-width: 33%;
+            max-width: 33%;
         }
 
         .column img {
-          vertical-align: middle;
+            vertical-align: middle;
         }
 
         .bigButton {
@@ -44,7 +44,7 @@
         function clearui() {
             var ips = document.getElementById("ips");
             for (var i = ips.options.length - 1 ; i >= 0 ; i--) {
-              ips.remove(i);
+                ips.remove(i);
             }
 
             window.localStorage.removeItem(ipkey);
